@@ -96,10 +96,6 @@ func (m *concurrencyCacheMock) CleanupExpiredAccountSlotKeys(ctx context.Context
 	return nil
 }
 
-func (m *concurrencyCacheMock) CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error {
-	return nil
-}
-
 func (m *concurrencyCacheMock) AcquireOpenAIWSIngressLease(ctx context.Context, apiKeyID int64, maxConnections int, leaseID string) (bool, error) {
 	if m.acquireIngressLeaseFn != nil {
 		return m.acquireIngressLeaseFn(ctx, apiKeyID, maxConnections, leaseID)

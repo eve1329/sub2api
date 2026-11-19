@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 )
 
 const scheduledTestDefaultMaxWorkers = 10
+const scheduledTestRunnerLockKey = "scheduled-test-runner"
 
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
 type ScheduledTestRunnerService struct {
@@ -19,6 +21,7 @@ type ScheduledTestRunnerService struct {
 	accountTestSvc *AccountTestService
 	rateLimitSvc   *RateLimitService
 	cfg            *config.Config
+	db             *sql.DB
 
 	cron      *cron.Cron
 	startOnce sync.Once
@@ -32,6 +35,7 @@ func NewScheduledTestRunnerService(
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
 	cfg *config.Config,
+	db *sql.DB,
 ) *ScheduledTestRunnerService {
 	return &ScheduledTestRunnerService{
 		planRepo:       planRepo,
@@ -39,6 +43,7 @@ func NewScheduledTestRunnerService(
 		accountTestSvc: accountTestSvc,
 		rateLimitSvc:   rateLimitSvc,
 		cfg:            cfg,
+		db:             db,
 	}
 }
 
@@ -90,6 +95,19 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
+	s.runDuePlans(ctx)
+}
+
+func (s *ScheduledTestRunnerService) runDuePlans(ctx context.Context) {
+	release, acquired, err := tryAcquireDBAdvisoryLockWithError(ctx, s.db, hashAdvisoryLockID(scheduledTestRunnerLockKey))
+	if err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] acquire lock failed: %v", err)
+		return
+	}
+	if !acquired {
+		return
+	}
+	defer release()
 
 	now := time.Now()
 	plans, err := s.planRepo.ListDue(ctx, now)
